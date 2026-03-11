@@ -31,9 +31,9 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install backend dependencies
+      - name: Install backend dependencies (with dev tools)
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --dev
 
       - name: Ruff lint
         working-directory: backend
@@ -81,9 +81,9 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install backend dependencies
+      - name: Install backend dependencies (with dev tools)
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --dev
 
       - name: Run backend unit tests
         working-directory: backend
@@ -142,7 +142,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --dev
 
       - name: Start test infrastructure
         run: docker compose -f docker-compose.test.yml up -d
@@ -208,7 +208,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --dev
 
       - name: Run eval (Golden Dataset)
         working-directory: backend
