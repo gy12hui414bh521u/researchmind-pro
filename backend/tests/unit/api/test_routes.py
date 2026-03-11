@@ -7,18 +7,19 @@
 3. test_kb_search：用真实 ChunkResult 对象（Pydantic 不接受 MagicMock）
 4. ingest 系列：patch _run_ingest_* 后台任务函数
 """
+
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ═══════════════════════════════════════════════════════════════════════
 # Health 路由
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestHealthRoutes:
 
+class TestHealthRoutes:
     @pytest.mark.asyncio
     async def test_health_returns_ok(self, client):
         resp = await client.get("/api/v1/health")
@@ -31,8 +32,10 @@ class TestHealthRoutes:
     async def test_health_detail_structure(self, client):
         with (
             patch("app.db.database.check_db_connection", AsyncMock(return_value=True)),
-            patch("app.rag.retriever.get_collection_stats",
-                  AsyncMock(return_value={"status": "green", "vectors_count": 500})),
+            patch(
+                "app.rag.retriever.get_collection_stats",
+                AsyncMock(return_value={"status": "green", "vectors_count": 500}),
+            ),
             patch("redis.asyncio.from_url") as mock_redis,
         ):
             mock_r = AsyncMock()
@@ -50,8 +53,10 @@ class TestHealthRoutes:
     async def test_health_detail_degraded_when_db_fails(self, client):
         with (
             patch("app.db.database.check_db_connection", AsyncMock(return_value=False)),
-            patch("app.rag.retriever.get_collection_stats",
-                  AsyncMock(return_value={"status": "green", "vectors_count": 0})),
+            patch(
+                "app.rag.retriever.get_collection_stats",
+                AsyncMock(return_value={"status": "green", "vectors_count": 0}),
+            ),
             patch("redis.asyncio.from_url") as mock_redis,
         ):
             mock_r = AsyncMock()
@@ -67,8 +72,8 @@ class TestHealthRoutes:
 # Tasks 路由
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestTaskRoutes:
 
+class TestTaskRoutes:
     @pytest.mark.asyncio
     async def test_create_task_returns_201(self, client, sample_task_create):
         resp = await client.post("/api/v1/tasks", json=sample_task_create)
@@ -82,9 +87,9 @@ class TestTaskRoutes:
     @pytest.mark.asyncio
     async def test_create_task_depth_validation(self, client):
         """depth 必须是 TaskDepth enum 值：'quick' 或 'deep'"""
-        resp = await client.post("/api/v1/tasks", json={
-            "query": "测试查询内容足够长才能通过", "depth": "invalid"
-        })
+        resp = await client.post(
+            "/api/v1/tasks", json={"query": "测试查询内容足够长才能通过", "depth": "invalid"}
+        )
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -105,9 +110,9 @@ class TestTaskRoutes:
     @pytest.mark.asyncio
     async def test_list_tasks_pagination(self, client):
         for i in range(3):
-            await client.post("/api/v1/tasks", json={
-                "query": f"研究任务内容 第{i}个任务测试", "depth": "quick"
-            })
+            await client.post(
+                "/api/v1/tasks", json={"query": f"研究任务内容 第{i}个任务测试", "depth": "quick"}
+            )
 
         resp = await client.get("/api/v1/tasks?page=1&size=2")
         data = resp.json()
@@ -141,8 +146,7 @@ class TestTaskRoutes:
         task_id = create_resp.json()["id"]
 
         # cancel() SQL 用了 NOW()（PostgreSQL 函数），SQLite 不支持，patch 掉
-        with patch("app.db.repositories.TaskRepository.cancel",
-                   AsyncMock(return_value=True)):
+        with patch("app.db.repositories.TaskRepository.cancel", AsyncMock(return_value=True)):
             resp = await client.delete(f"/api/v1/tasks/{task_id}")
         assert resp.status_code == 204
 
@@ -150,8 +154,7 @@ class TestTaskRoutes:
     async def test_cancel_nonexistent_task(self, client):
         fake_id = "00000000-0000-0000-0000-000000000999"
         # cancel() 返回 False/None 表示未找到，路由应返回 400
-        with patch("app.db.repositories.TaskRepository.cancel",
-                   AsyncMock(return_value=False)):
+        with patch("app.db.repositories.TaskRepository.cancel", AsyncMock(return_value=False)):
             resp = await client.delete(f"/api/v1/tasks/{fake_id}")
         assert resp.status_code == 400
 
@@ -172,15 +175,18 @@ class TestTaskRoutes:
 # Knowledge 路由
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestKnowledgeRoutes:
 
+class TestKnowledgeRoutes:
     @pytest.mark.asyncio
     async def test_ingest_text_returns_202(self, client, sample_doc_text):
         with patch("app.api.knowledge._run_ingest_text", AsyncMock()):
-            resp = await client.post("/api/v1/kb/ingest/text", json={
-                "text": sample_doc_text,
-                "title": "测试文档",
-            })
+            resp = await client.post(
+                "/api/v1/kb/ingest/text",
+                json={
+                    "text": sample_doc_text,
+                    "title": "测试文档",
+                },
+            )
         assert resp.status_code == 202
         data = resp.json()
         assert "doc_id" in data
@@ -189,10 +195,13 @@ class TestKnowledgeRoutes:
     @pytest.mark.asyncio
     async def test_ingest_url_returns_202(self, client):
         with patch("app.api.knowledge._run_ingest_url", AsyncMock()):
-            resp = await client.post("/api/v1/kb/ingest/url", json={
-                "url": "https://example.com/ai-report",
-                "title": "AI 市场报告",
-            })
+            resp = await client.post(
+                "/api/v1/kb/ingest/url",
+                json={
+                    "url": "https://example.com/ai-report",
+                    "title": "AI 市场报告",
+                },
+            )
         assert resp.status_code == 202
         assert resp.json()["status"] == "processing"
 
@@ -231,6 +240,7 @@ class TestKnowledgeRoutes:
     @pytest.mark.asyncio
     async def test_kb_search(self, client):
         from app.models.document import ChunkResult
+
         mock_chunk = ChunkResult(
             chunk_id="chunk-1",
             text="大模型市场分析内容详细说明",
@@ -240,14 +250,22 @@ class TestKnowledgeRoutes:
             source_url=None,
             source_type="internal",
         )
-        with patch("app.rag.retriever.retrieve", AsyncMock(return_value=MagicMock(
-            chunks=[mock_chunk],
-            total_found=1,
-        ))):
-            resp = await client.post("/api/v1/kb/search", json={
-                "query": "大模型市场",
-                "top_k": 5,
-            })
+        with patch(
+            "app.rag.retriever.retrieve",
+            AsyncMock(
+                return_value=MagicMock(
+                    chunks=[mock_chunk],
+                    total_found=1,
+                )
+            ),
+        ):
+            resp = await client.post(
+                "/api/v1/kb/search",
+                json={
+                    "query": "大模型市场",
+                    "top_k": 5,
+                },
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert "results" in data
@@ -255,10 +273,15 @@ class TestKnowledgeRoutes:
 
     @pytest.mark.asyncio
     async def test_kb_stats(self, client):
-        with patch("app.rag.retriever.get_collection_stats", AsyncMock(return_value={
-            "vectors_count": 1200,
-            "status": "green",
-        })):
+        with patch(
+            "app.rag.retriever.get_collection_stats",
+            AsyncMock(
+                return_value={
+                    "vectors_count": 1200,
+                    "status": "green",
+                }
+            ),
+        ):
             resp = await client.get("/api/v1/kb/stats")
         assert resp.status_code == 200
         data = resp.json()

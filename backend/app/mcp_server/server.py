@@ -50,7 +50,7 @@ async def tool_research_task(query: str, depth: str = "deep") -> str:
 
         # SSE 流式等待完成
         report = ""
-        error  = ""
+        error = ""
 
         async with client.stream(
             "GET",
@@ -116,8 +116,8 @@ async def tool_search_knowledge_base(query: str, top_k: int = 5) -> str:
     lines = [f"知识库搜索结果（共 {len(results)} 条）：\n"]
     for i, r in enumerate(results, 1):
         source = r.get("title") or r.get("source_url") or "内部文档"
-        score  = r.get("score", 0)
-        text   = r.get("text", "")[:400]
+        score = r.get("score", 0)
+        text = r.get("text", "")[:400]
         lines.append(f"[{i}] 来源: {source} | 相关度: {score:.3f}")
         lines.append(text)
         lines.append("")
@@ -151,10 +151,10 @@ async def tool_list_recent_tasks(limit: int = 5) -> str:
 
     lines = [f"最近 {len(items)} 条研究任务：\n"]
     for t in items:
-        status   = t.get("status", "")
-        query    = t.get("query", "")[:60]
-        task_id  = str(t.get("id", ""))[:8]
-        created  = t.get("created_at", "")[:10]
+        status = t.get("status", "")
+        query = t.get("query", "")[:60]
+        task_id = str(t.get("id", ""))[:8]
+        created = t.get("created_at", "")[:10]
         lines.append(f"• [{task_id}] {status:12s} {created}  {query}...")
 
     return "\n".join(lines)
@@ -164,7 +164,7 @@ async def tool_list_recent_tasks(limit: int = 5) -> str:
 
 TOOL_REGISTRY = {
     "research_task": {
-        "fn":          tool_research_task,
+        "fn": tool_research_task,
         "description": "发起完整研究任务，多 Agent 协作生成报告",
         "inputSchema": {
             "type": "object",
@@ -176,7 +176,7 @@ TOOL_REGISTRY = {
         },
     },
     "search_knowledge_base": {
-        "fn":          tool_search_knowledge_base,
+        "fn": tool_search_knowledge_base,
         "description": "在知识库中语义搜索相关文档片段",
         "inputSchema": {
             "type": "object",
@@ -188,7 +188,7 @@ TOOL_REGISTRY = {
         },
     },
     "list_recent_tasks": {
-        "fn":          tool_list_recent_tasks,
+        "fn": tool_list_recent_tasks,
         "description": "列出最近的研究任务及完成状态",
         "inputSchema": {
             "type": "object",
@@ -213,16 +213,18 @@ async def handle_request(request: dict) -> dict:
         return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
 
     if method == "initialize":
-        return ok({
-            "protocolVersion": "2024-11-05",
-            "capabilities":    {"tools": {}},
-            "serverInfo":      {"name": "researchmind-mcp", "version": "2.0.0"},
-        })
+        return ok(
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "researchmind-mcp", "version": "2.0.0"},
+            }
+        )
 
     elif method == "tools/list":
         tools = [
             {
-                "name":        name,
+                "name": name,
                 "description": info["description"],
                 "inputSchema": info["inputSchema"],
             }
@@ -239,18 +241,22 @@ async def handle_request(request: dict) -> dict:
 
         try:
             result_text = await TOOL_REGISTRY[tool_name]["fn"](**arguments)
-            return ok({
-                "content": [{"type": "text", "text": result_text}],
-                "isError":  False,
-            })
+            return ok(
+                {
+                    "content": [{"type": "text", "text": result_text}],
+                    "isError": False,
+                }
+            )
         except Exception as e:
-            return ok({
-                "content": [{"type": "text", "text": f"工具执行失败: {e}"}],
-                "isError":  True,
-            })
+            return ok(
+                {
+                    "content": [{"type": "text", "text": f"工具执行失败: {e}"}],
+                    "isError": True,
+                }
+            )
 
     elif method == "notifications/initialized":
-        return None   # 通知不需要回复
+        return None  # 通知不需要回复
 
     else:
         return err(-32601, f"未知方法: {method}")

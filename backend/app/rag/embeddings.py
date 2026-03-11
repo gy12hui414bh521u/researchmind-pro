@@ -7,7 +7,6 @@ Embedding 模型封装
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 
 import httpx
@@ -24,9 +23,9 @@ class EmbeddingClient:
 
     def __init__(self) -> None:
         cfg = settings.get_embedding_config()
-        self.provider   = cfg["provider"]
-        self.model      = cfg["model"]
-        self.api_key    = cfg["api_key"]
+        self.provider = cfg["provider"]
+        self.model = cfg["model"]
+        self.api_key = cfg["api_key"]
         self.dimensions = cfg["dimensions"]
 
         # 两个 provider 的 API endpoint
@@ -63,13 +62,11 @@ class EmbeddingClient:
         vectors = await self.embed_texts([text])
         return vectors[0]
 
-    async def _embed_batch(
-        self, client: httpx.AsyncClient, texts: list[str]
-    ) -> list[list[float]]:
+    async def _embed_batch(self, client: httpx.AsyncClient, texts: list[str]) -> list[list[float]]:
         """调用 API 向量化一批文本"""
         payload: dict[str, Any] = {
-            "model":  self.model,
-            "input":  texts,
+            "model": self.model,
+            "input": texts,
         }
 
         # Qwen text-embedding-v3 支持指定维度（降维节省存储）
@@ -78,7 +75,7 @@ class EmbeddingClient:
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
         }
 
         resp = await client.post(self.endpoint, json=payload, headers=headers)

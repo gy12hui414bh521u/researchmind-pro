@@ -9,10 +9,11 @@
 4. mock_emb_client 对齐 embed_query / embed_texts
 5. mock_qdrant 对齐 query_points + close()
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 # ── 事件循环 ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def event_loop_policy():
@@ -86,14 +88,18 @@ CREATE TABLE IF NOT EXISTS documents (
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
+
 def _register_uuid_func(conn):
     """注册 SQLite 自定义函数，模拟 PostgreSQL gen_random_uuid()"""
     import uuid
+
     conn.create_function("gen_uuid", 0, lambda: str(uuid.uuid4()))
+
 
 @pytest_asyncio.fixture(scope="function")
 async def db_engine():
     import uuid as _uuid
+
     from sqlalchemy import event as sa_event
 
     engine = create_async_engine(
@@ -110,11 +116,11 @@ async def db_engine():
     # 建表，id DEFAULT 用 gen_uuid()
     create_tasks = CREATE_TASKS_TABLE.replace(
         "id              TEXT PRIMARY KEY,",
-        "id              TEXT PRIMARY KEY DEFAULT (gen_uuid()),"
+        "id              TEXT PRIMARY KEY DEFAULT (gen_uuid()),",
     )
     create_docs = CREATE_DOCUMENTS_TABLE.replace(
         "id              TEXT PRIMARY KEY,",
-        "id              TEXT PRIMARY KEY DEFAULT (gen_uuid()),"
+        "id              TEXT PRIMARY KEY DEFAULT (gen_uuid()),",
     )
 
     async with engine.begin() as conn:
@@ -127,6 +133,7 @@ async def db_engine():
 @pytest_asyncio.fixture(scope="function")
 async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
     from sqlalchemy.ext.asyncio import async_sessionmaker
+
     async_session = async_sessionmaker(db_engine, expire_on_commit=False)
     async with async_session() as session:
         yield session
@@ -134,11 +141,12 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
 
 # ── FastAPI 测试客户端 ────────────────────────────────────────────────
 
+
 @pytest_asyncio.fixture(scope="function")
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
-    from app.main import app
-    from app.db.database import get_db
     from app.config import settings
+    from app.db.database import get_db
+    from app.main import app
 
     settings.auth_disabled = True
 
@@ -159,12 +167,14 @@ async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
 
 # ── Mock Embedding Client ─────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_emb_client():
     client = MagicMock()
     client.embed_query = AsyncMock(return_value=[0.15] * 1536)
     client.embed_texts = AsyncMock(return_value=[[0.1] * 1536, [0.2] * 1536])
     return client
+
 
 @pytest.fixture
 def mock_embeddings(mock_emb_client):
@@ -173,16 +183,18 @@ def mock_embeddings(mock_emb_client):
 
 # ── Mock LLM ─────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_llm():
     llm = MagicMock()
-    llm.ainvoke = AsyncMock(return_value=MagicMock(
-        content='{"subtasks": ["分析市场规模", "竞争格局", "技术趋势"]}'
-    ))
+    llm.ainvoke = AsyncMock(
+        return_value=MagicMock(content='{"subtasks": ["分析市场规模", "竞争格局", "技术趋势"]}')
+    )
     return llm
 
 
 # ── Mock Qdrant ───────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_qdrant():
@@ -191,25 +203,30 @@ def mock_qdrant():
         id="chunk-001",
         score=0.92,
         payload={
-            "chunk_id":    "chunk-001",
-            "text":        "大模型市场2024年规模超过千亿美元",
-            "title":       "AI市场报告",
-            "doc_id":      "doc-001",
+            "chunk_id": "chunk-001",
+            "text": "大模型市场2024年规模超过千亿美元",
+            "title": "AI市场报告",
+            "doc_id": "doc-001",
             "source_type": "internal",
-        }
+        },
     )
-    qdrant.query_points   = AsyncMock(return_value=MagicMock(points=[_hit]))
-    qdrant.search         = AsyncMock(return_value=[_hit])
-    qdrant.upsert         = AsyncMock(return_value=MagicMock(status="completed"))
-    qdrant.delete         = AsyncMock(return_value=MagicMock(status="completed"))
-    qdrant.get_collection = AsyncMock(return_value=MagicMock(
-        vectors_count=1000, points_count=1000, status="green",
-    ))
+    qdrant.query_points = AsyncMock(return_value=MagicMock(points=[_hit]))
+    qdrant.search = AsyncMock(return_value=[_hit])
+    qdrant.upsert = AsyncMock(return_value=MagicMock(status="completed"))
+    qdrant.delete = AsyncMock(return_value=MagicMock(status="completed"))
+    qdrant.get_collection = AsyncMock(
+        return_value=MagicMock(
+            vectors_count=1000,
+            points_count=1000,
+            status="green",
+        )
+    )
     qdrant.close = AsyncMock()
     return qdrant
 
 
 # ── 样本数据 ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def sample_task_create():

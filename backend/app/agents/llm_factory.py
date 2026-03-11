@@ -23,6 +23,7 @@ def create_llm(spec: str, **kwargs) -> ChatOpenAI:
     # Anthropic 走独立 SDK
     if cfg.get("_provider") == "anthropic":
         from langchain_anthropic import ChatAnthropic
+
         return ChatAnthropic(
             model=cfg["model"],
             api_key=cfg["api_key"],
@@ -32,8 +33,8 @@ def create_llm(spec: str, **kwargs) -> ChatOpenAI:
 
     # DeepSeek / Qwen / OpenAI 统一走 ChatOpenAI
     init_kwargs = {
-        "model":       cfg["model"],
-        "api_key":     cfg["api_key"],
+        "model": cfg["model"],
+        "api_key": cfg["api_key"],
         "temperature": cfg.get("temperature", 0.1),
     }
     if "base_url" in cfg:
@@ -47,21 +48,26 @@ def create_llm(spec: str, **kwargs) -> ChatOpenAI:
 
 # ── 各 Agent 专用 LLM（带缓存，避免重复初始化）─────────────────────
 
+
 @lru_cache(maxsize=1)
 def get_planner_llm() -> ChatOpenAI:
     return create_llm(settings.planner_model_spec, max_tokens=settings.max_tokens_planner)
+
 
 @lru_cache(maxsize=1)
 def get_writer_llm() -> ChatOpenAI:
     return create_llm(settings.writer_model_spec, max_tokens=settings.max_tokens_writer)
 
+
 @lru_cache(maxsize=1)
 def get_analyst_llm() -> ChatOpenAI:
     return create_llm(settings.analyst_model_spec, max_tokens=settings.max_tokens_default)
 
+
 @lru_cache(maxsize=1)
 def get_research_llm() -> ChatOpenAI:
     return create_llm(settings.research_model_spec, max_tokens=settings.max_tokens_default)
+
 
 @lru_cache(maxsize=1)
 def get_critic_llm() -> ChatOpenAI:

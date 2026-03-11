@@ -11,18 +11,17 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
-
 
 # ── 记忆类型 ──────────────────────────────────────────────────────────
 
 MEMORY_TYPES = {
     "user_preference": "用户偏好（报告语言、深度偏好、关注领域）",
-    "domain_context":  "领域背景知识（用户告知的行业背景）",
-    "task_summary":    "历史任务摘要（防止重复研究相同问题）",
+    "domain_context": "领域背景知识（用户告知的行业背景）",
+    "task_summary": "历史任务摘要（防止重复研究相同问题）",
 }
 
 
@@ -38,6 +37,7 @@ class MemoryStore:
     async def _get_client(self):
         if self._client is None:
             import redis.asyncio as aioredis
+
             self._client = aioredis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
@@ -49,11 +49,11 @@ class MemoryStore:
 
     async def save(
         self,
-        user_id:     str,
+        user_id: str,
         memory_type: str,
-        key:         str,
-        value:       Any,
-        ttl_days:    int = 90,
+        key: str,
+        value: Any,
+        ttl_days: int = 90,
     ) -> None:
         """
         保存一条记忆。
@@ -62,36 +62,36 @@ class MemoryStore:
         r = await self._get_client()
         redis_key = f"memory:{user_id}:{memory_type}"
         entry = {
-            "value":      value,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "value": value,
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         await r.hset(redis_key, key, json.dumps(entry, ensure_ascii=False))
         await r.expire(redis_key, ttl_days * 86400)
 
     async def save_task_summary(
         self,
-        user_id:  str,
-        task_id:  str,
-        query:    str,
-        summary:  str,
-        keywords: list[str] = [],
+        user_id: str,
+        task_id: str,
+        query: str,
+        summary: str,
+        keywords: list[str] = None,
     ) -> None:
         """保存任务完成摘要（供后续任务参考，避免重复研究）"""
+        if keywords is None:
+            keywords = []
         await self.save(
-            user_id=     user_id,
-            memory_type= "task_summary",
-            key=         task_id,
+            user_id=user_id,
+            memory_type="task_summary",
+            key=task_id,
             value={
-                "query":    query,
-                "summary":  summary[:500],
+                "query": query,
+                "summary": summary[:500],
                 "keywords": keywords,
             },
             ttl_days=180,
         )
 
-    async def save_user_preference(
-        self, user_id: str, pref_key: str, pref_value: Any
-    ) -> None:
+    async def save_user_preference(self, user_id: str, pref_key: str, pref_value: Any) -> None:
         """保存用户偏好，如 language=zh、depth=deep"""
         await self.save(user_id, "user_preference", pref_key, pref_value, ttl_days=365)
 
@@ -112,14 +112,9 @@ class MemoryStore:
         r = await self._get_client()
         redis_key = f"memory:{user_id}:{memory_type}"
         raw_dict = await r.hgetall(redis_key)
-        return {
-            k: json.loads(v).get("value")
-            for k, v in raw_dict.items()
-        }
+        return {k: json.loads(v).get("value") for k, v in raw_dict.items()}
 
-    async def get_recent_task_summaries(
-        self, user_id: str, limit: int = 5
-    ) -> list[dict]:
+    async def get_recent_task_summaries(self, user_id: str, limit: int = 5) -> list[dict]:
         """获取最近 N 条任务摘要，注入 Planner 作为上下文"""
         summaries = await self.get_all(user_id, "task_summary")
         result = []
@@ -137,7 +132,7 @@ class MemoryStore:
         为当前任务构建记忆上下文字符串，注入 Planner prompt。
         包含：用户偏好 + 相关历史任务摘要
         """
-        prefs    = await self.get_user_preferences(user_id)
+        prefs = await self.get_user_preferences(user_id)
         summaries = await self.get_recent_task_summaries(user_id, limit=3)
 
         lines = []

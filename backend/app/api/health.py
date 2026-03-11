@@ -26,6 +26,7 @@ async def health_detail():
     # PostgreSQL
     try:
         from app.db.database import check_db_connection
+
         results["postgres"] = "ok" if await check_db_connection() else "error"
     except Exception as e:
         results["postgres"] = f"error: {e}"
@@ -33,6 +34,7 @@ async def health_detail():
     # Qdrant
     try:
         from app.rag.retriever import get_collection_stats
+
         stats = await get_collection_stats()
         results["qdrant"] = "ok" if stats["status"] != "unavailable" else "error"
         results["qdrant_vectors"] = stats.get("vectors_count", 0)
@@ -42,6 +44,7 @@ async def health_detail():
     # Redis
     try:
         import redis.asyncio as aioredis
+
         r = aioredis.from_url(settings.redis_url)
         await r.ping()
         await r.aclose()
@@ -51,9 +54,12 @@ async def health_detail():
 
     # LLM Providers
     results["llm_providers"] = settings.available_providers
-    results["embedding"]     = settings.embedding_provider
+    results["embedding"] = settings.embedding_provider
 
-    overall = "ok" if all(v == "ok" for k, v in results.items()
-                          if k in ("postgres", "qdrant", "redis")) else "degraded"
+    overall = (
+        "ok"
+        if all(v == "ok" for k, v in results.items() if k in ("postgres", "qdrant", "redis"))
+        else "degraded"
+    )
 
     return {"status": overall, "components": results}

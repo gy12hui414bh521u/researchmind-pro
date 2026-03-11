@@ -7,24 +7,27 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.task import (
-    CostInfo, TaskCreate, TaskDepth, TaskPlan, TaskResult, TaskStatus,
-)
 from app.models.document import (
-    DocumentIngestText, DocumentIngestURL, DocumentSourceType, DocumentStatus,
+    DocumentSourceType,
 )
-
+from app.models.task import (
+    CostInfo,
+    TaskCreate,
+    TaskPlan,
+    TaskResult,
+    TaskStatus,
+)
 
 # ══════════════════════════════════════════════════════════════════════
 # Task Repository
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TaskRepository:
     """任务 CRUD，使用原生 SQL（避免 ORM 的 lazy load 问题）"""
@@ -42,19 +45,16 @@ class TaskRepository:
             """),
             {
                 "user_id": user_id,
-                "query":   task_in.query,
-                "depth":   task_in.depth.value,
+                "query": task_in.query,
+                "depth": task_in.depth.value,
                 "context": json.dumps(task_in.context, ensure_ascii=False),
-            }
+            },
         )
         return dict(row.mappings().one())
 
     async def get(self, task_id: str) -> dict | None:
         """按 ID 查询任务"""
-        row = await self.db.execute(
-            text("SELECT * FROM tasks WHERE id = :id"),
-            {"id": task_id}
-        )
+        row = await self.db.execute(text("SELECT * FROM tasks WHERE id = :id"), {"id": task_id})
         result = row.mappings().first()
         return dict(result) if result else None
 
@@ -71,13 +71,12 @@ class TaskRepository:
                 ORDER BY created_at DESC
                 LIMIT :size OFFSET :offset
             """),
-            {"user_id": user_id, "size": size, "offset": offset}
+            {"user_id": user_id, "size": size, "offset": offset},
         )
         items = [dict(r) for r in rows.mappings()]
 
         count_row = await self.db.execute(
-            text("SELECT COUNT(*) FROM tasks WHERE user_id = :user_id"),
-            {"user_id": user_id}
+            text("SELECT COUNT(*) FROM tasks WHERE user_id = :user_id"), {"user_id": user_id}
         )
         total = count_row.scalar_one()
         return items, total
@@ -86,9 +85,9 @@ class TaskRepository:
         """更新任务状态"""
         extra: dict[str, Any] = {}
         if status == TaskStatus.RESEARCHING:
-            extra["started_at"] = datetime.now(timezone.utc)
+            extra["started_at"] = datetime.now(UTC)
         elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
-            extra["completed_at"] = datetime.now(timezone.utc)
+            extra["completed_at"] = datetime.now(UTC)
 
         set_clause = "status = :status"
         params: dict[str, Any] = {"id": task_id, "status": status.value}
@@ -100,10 +99,7 @@ class TaskRepository:
             set_clause += ", completed_at = :completed_at"
             params["completed_at"] = extra["completed_at"]
 
-        await self.db.execute(
-            text(f"UPDATE tasks SET {set_clause} WHERE id = :id"),
-            params
-        )
+        await self.db.execute(text(f"UPDATE tasks SET {set_clause} WHERE id = :id"), params)
 
     async def update_plan(self, task_id: str, plan: TaskPlan) -> None:
         """保存 Planner 输出"""
@@ -113,17 +109,15 @@ class TaskRepository:
                 SET plan = :plan, status = 'planning'
                 WHERE id = :id
             """),
-            {"id": task_id, "plan": json.dumps(plan.model_dump(), ensure_ascii=False)}
+            {"id": task_id, "plan": json.dumps(plan.model_dump(), ensure_ascii=False)},
         )
 
-    async def update_hitl(
-        self, task_id: str, required: bool, approved: bool | None = None
-    ) -> None:
+    async def update_hitl(self, task_id: str, required: bool, approved: bool | None = None) -> None:
         """更新 HiTL 状态"""
         if approved is None:
             await self.db.execute(
                 text("UPDATE tasks SET hitl_required = :req WHERE id = :id"),
-                {"id": task_id, "req": required}
+                {"id": task_id, "req": required},
             )
         else:
             await self.db.execute(
@@ -132,7 +126,7 @@ class TaskRepository:
                     SET hitl_required = :req, hitl_approved = :approved
                     WHERE id = :id
                 """),
-                {"id": task_id, "req": required, "approved": approved}
+                {"id": task_id, "req": required, "approved": approved},
             )
 
     async def update_result(
@@ -158,14 +152,14 @@ class TaskRepository:
                 WHERE id = :id
             """),
             {
-                "id":              task_id,
-                "result":          json.dumps(result.model_dump(), ensure_ascii=False),
-                "quality_score":   quality_score,
+                "id": task_id,
+                "result": json.dumps(result.model_dump(), ensure_ascii=False),
+                "quality_score": quality_score,
                 "iteration_count": iteration_count,
-                "token_input":     cost.token_input,
-                "token_output":    cost.token_output,
-                "cost_usd":        cost.cost_usd,
-            }
+                "token_input": cost.token_input,
+                "token_output": cost.token_output,
+                "cost_usd": cost.cost_usd,
+            },
         )
 
     async def update_error(self, task_id: str, error_code: str, message: str) -> None:
@@ -179,7 +173,7 @@ class TaskRepository:
                     completed_at = NOW()
                 WHERE id = :id
             """),
-            {"id": task_id, "code": error_code, "msg": message}
+            {"id": task_id, "code": error_code, "msg": message},
         )
 
     async def cancel(self, task_id: str) -> bool:
@@ -192,7 +186,7 @@ class TaskRepository:
                   AND status IN ('pending', 'planning')
                 RETURNING id
             """),
-            {"id": task_id}
+            {"id": task_id},
         )
         return result.first() is not None
 
@@ -200,6 +194,7 @@ class TaskRepository:
 # ══════════════════════════════════════════════════════════════════════
 # Document Repository
 # ══════════════════════════════════════════════════════════════════════
+
 
 class DocumentRepository:
     """知识库文档 CRUD"""
@@ -215,8 +210,7 @@ class DocumentRepository:
     async def find_by_hash(self, doc_hash: str) -> dict | None:
         """通过内容 hash 查找已存在文档（幂等检查）"""
         row = await self.db.execute(
-            text("SELECT * FROM documents WHERE doc_hash = :hash"),
-            {"hash": doc_hash}
+            text("SELECT * FROM documents WHERE doc_hash = :hash"), {"hash": doc_hash}
         )
         result = row.mappings().first()
         return dict(result) if result else None
@@ -243,14 +237,14 @@ class DocumentRepository:
                 RETURNING *
             """),
             {
-                "hash":            doc_hash,
-                "title":           title,
-                "source_type":     source_type.value,
-                "source_url":      source_url,
-                "file_name":       file_name,
+                "hash": doc_hash,
+                "title": title,
+                "source_type": source_type.value,
+                "source_url": source_url,
+                "file_name": file_name,
                 "embedding_model": embedding_model,
-                "metadata":        json.dumps(metadata or {}, ensure_ascii=False),
-            }
+                "metadata": json.dumps(metadata or {}, ensure_ascii=False),
+            },
         )
         return dict(row.mappings().one())
 
@@ -262,7 +256,7 @@ class DocumentRepository:
                 SET status = 'completed', chunk_count = :count, updated_at = NOW()
                 WHERE id = :id
             """),
-            {"id": doc_id, "count": chunk_count}
+            {"id": doc_id, "count": chunk_count},
         )
 
     async def update_failed(self, doc_id: str, error: str) -> None:
@@ -273,14 +267,11 @@ class DocumentRepository:
                 SET status = 'failed', error_message = :error, updated_at = NOW()
                 WHERE id = :id
             """),
-            {"id": doc_id, "error": error}
+            {"id": doc_id, "error": error},
         )
 
     async def get(self, doc_id: str) -> dict | None:
-        row = await self.db.execute(
-            text("SELECT * FROM documents WHERE id = :id"),
-            {"id": doc_id}
-        )
+        row = await self.db.execute(text("SELECT * FROM documents WHERE id = :id"), {"id": doc_id})
         result = row.mappings().first()
         return dict(result) if result else None
 
@@ -300,13 +291,12 @@ class DocumentRepository:
                 ORDER BY created_at DESC
                 LIMIT :size OFFSET :offset
             """),
-            params
+            params,
         )
         items = [dict(r) for r in rows.mappings()]
 
         count_row = await self.db.execute(
-            text(f"SELECT COUNT(*) FROM documents {where}"),
-            {"status": status} if status else {}
+            text(f"SELECT COUNT(*) FROM documents {where}"), {"status": status} if status else {}
         )
         total = count_row.scalar_one()
         return items, total
@@ -314,8 +304,7 @@ class DocumentRepository:
     async def delete(self, doc_id: str) -> bool:
         """删除文档记录（向量数据需另行从 Qdrant 删除）"""
         result = await self.db.execute(
-            text("DELETE FROM documents WHERE id = :id RETURNING id"),
-            {"id": doc_id}
+            text("DELETE FROM documents WHERE id = :id RETURNING id"), {"id": doc_id}
         )
         return result.first() is not None
 
@@ -329,7 +318,6 @@ class DocumentRepository:
         snippet: str,
     ) -> None:
         """记录任务来源（用于报告引用）"""
-        key = doc_id or source_url or ""
         await self.db.execute(
             text("""
                 INSERT INTO task_sources
@@ -338,11 +326,11 @@ class DocumentRepository:
                 ON CONFLICT DO NOTHING
             """),
             {
-                "task_id":     task_id,
-                "doc_id":      doc_id,
-                "source_url":  source_url,
+                "task_id": task_id,
+                "doc_id": doc_id,
+                "source_url": source_url,
                 "source_type": source_type,
-                "relevance":   relevance,
-                "snippet":     snippet[:500],
-            }
+                "relevance": relevance,
+                "snippet": snippet[:500],
+            },
         )

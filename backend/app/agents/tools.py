@@ -5,9 +5,6 @@ LangChain Tool 格式，供 Research Agent 调用
 
 from __future__ import annotations
 
-import json
-from typing import Optional
-
 from langchain_core.tools import tool
 
 from app.config import settings
@@ -63,11 +60,11 @@ async def web_search(query: str, max_results: int = 5) -> str:
             resp = await client.post(
                 "https://api.tavily.com/search",
                 json={
-                    "api_key":              settings.tavily_api_key,
-                    "query":                query,
-                    "max_results":          max_results,
-                    "include_answer":       True,
-                    "include_raw_content":  False,
+                    "api_key": settings.tavily_api_key,
+                    "query": query,
+                    "max_results": max_results,
+                    "include_answer": True,
+                    "include_raw_content": False,
                 },
             )
             resp.raise_for_status()
@@ -96,6 +93,7 @@ def get_current_date() -> str:
     获取当前日期，用于报告中需要标注时效性的场景。
     """
     from datetime import datetime
+
     return datetime.now().strftime("%Y年%m月%d日")
 
 

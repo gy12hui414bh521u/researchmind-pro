@@ -13,23 +13,24 @@ from app.config import settings
 from app.models.document import ChunkResult
 from app.rag.embeddings import get_embedding_client
 
-
 # ── 检索结果 ──────────────────────────────────────────────────────────
+
 
 @dataclass
 class RetrievalResult:
-    chunks:       list[ChunkResult]
-    total_found:  int
-    strategy:     str       # "hybrid+rerank" | "hybrid" | "dense"
-    elapsed_ms:   int       = 0
+    chunks: list[ChunkResult]
+    total_found: int
+    strategy: str  # "hybrid+rerank" | "hybrid" | "dense"
+    elapsed_ms: int = 0
 
 
 # ── 主检索函数 ────────────────────────────────────────────────────────
 
+
 async def retrieve(
-    query:   str,
-    top_k:   int        = 5,
-    filters: dict       = {},
+    query: str,
+    top_k: int = 5,
+    filters: dict = None,
 ) -> RetrievalResult:
     """
     完整检索流水线：
@@ -40,6 +41,8 @@ async def retrieve(
     注意：Qdrant 的 Sparse（BM25）索引需要在 collection 创建时指定，
     本版本先用 Dense-only，后续可升级为 Hybrid。
     """
+    if filters is None:
+        filters = {}
     start = time.time()
     emb_client = get_embedding_client()
 
@@ -52,8 +55,7 @@ async def retrieve(
 
     if not raw_chunks:
         return RetrievalResult(
-            chunks=[], total_found=0,
-            strategy="dense", elapsed_ms=int((time.time()-start)*1000)
+            chunks=[], total_found=0, strategy="dense", elapsed_ms=int((time.time() - start) * 1000)
         )
 
     # 3. Rerank（有 Cohere Key 时）
@@ -79,26 +81,23 @@ async def retrieve(
 
 async def _qdrant_search(
     query_vector: list[float],
-    top_k:        int,
-    filters:      dict,
+    top_k: int,
+    filters: dict,
 ) -> list[ChunkResult]:
     """向量检索 Qdrant（兼容 qdrant-client >= 1.7）"""
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Filter, FieldCondition, MatchValue
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
 
     client = AsyncQdrantClient(
         host=settings.qdrant_host,
         port=settings.qdrant_port,
-        check_compatibility=False,   # 跳过 client/server 版本兼容检查
+        check_compatibility=False,  # 跳过 client/server 版本兼容检查
     )
 
     # 构建过滤条件
     qdrant_filter = None
     if filters:
-        conditions = [
-            FieldCondition(key=k, match=MatchValue(value=v))
-            for k, v in filters.items()
-        ]
+        conditions = [FieldCondition(key=k, match=MatchValue(value=v)) for k, v in filters.items()]
         qdrant_filter = Filter(must=conditions)
 
     # qdrant-client >= 1.7 用 query_points，旧版用 search
@@ -128,28 +127,42 @@ async def _qdrant_search(
     chunks = []
     for hit in hits:
         payload = hit.payload or {}
-        chunks.append(ChunkResult(
-            chunk_id=    payload.get("chunk_id", str(hit.id)),
-            text=        payload.get("text", ""),
-            score=       hit.score,
-            doc_id=      payload.get("doc_id"),
-            title=       payload.get("title"),
-            source_url=  payload.get("source_url"),
-            source_type= payload.get("source_type", "internal"),
-            section=     payload.get("section"),
-            metadata=    {
-                k: v for k, v in payload.items()
-                if k not in {"chunk_id", "doc_id", "doc_hash", "chunk_index",
-                             "text", "title", "source_url", "source_type", "section", "language"}
-            },
-        ))
+        chunks.append(
+            ChunkResult(
+                chunk_id=payload.get("chunk_id", str(hit.id)),
+                text=payload.get("text", ""),
+                score=hit.score,
+                doc_id=payload.get("doc_id"),
+                title=payload.get("title"),
+                source_url=payload.get("source_url"),
+                source_type=payload.get("source_type", "internal"),
+                section=payload.get("section"),
+                metadata={
+                    k: v
+                    for k, v in payload.items()
+                    if k
+                    not in {
+                        "chunk_id",
+                        "doc_id",
+                        "doc_hash",
+                        "chunk_index",
+                        "text",
+                        "title",
+                        "source_url",
+                        "source_type",
+                        "section",
+                        "language",
+                    }
+                },
+            )
+        )
     return chunks
 
 
 async def _cohere_rerank(
-    query:     str,
-    chunks:    list[ChunkResult],
-    top_n:     int,
+    query: str,
+    chunks: list[ChunkResult],
+    top_n: int,
 ) -> list[ChunkResult]:
     """Cohere Rerank 精排"""
     import httpx
@@ -161,15 +174,15 @@ async def _cohere_rerank(
             "https://api.cohere.com/v1/rerank",
             headers={
                 "Authorization": f"Bearer {settings.cohere_api_key}",
-                "Content-Type":  "application/json",
+                "Content-Type": "application/json",
             },
             json={
-                "model":     settings.cohere_rerank_model,
-                "query":     query,
+                "model": settings.cohere_rerank_model,
+                "query": query,
                 "documents": documents,
-                "top_n":     top_n,
+                "top_n": top_n,
                 "return_documents": False,
-            }
+            },
         )
         resp.raise_for_status()
         data = resp.json()
@@ -177,7 +190,7 @@ async def _cohere_rerank(
     # 按 rerank 排序重排 chunks，更新 score
     reranked = []
     for item in data.get("results", []):
-        idx   = item["index"]
+        idx = item["index"]
         score = item["relevance_score"]
         chunk = chunks[idx]
         chunk.score = score
@@ -188,10 +201,11 @@ async def _cohere_rerank(
 
 # ── Agentic 多轮检索 ──────────────────────────────────────────────────
 
+
 async def agentic_retrieve(
-    query:          str,
-    top_k:          int  = 5,
-    max_iterations: int  = 3,
+    query: str,
+    top_k: int = 5,
+    max_iterations: int = 3,
     coverage_threshold: float = 0.8,
 ) -> list[ChunkResult]:
     """
@@ -230,10 +244,11 @@ async def agentic_retrieve(
 
 # ── 删除文档向量 ──────────────────────────────────────────────────────
 
+
 async def delete_doc_vectors(doc_hash: str) -> int:
     """从 Qdrant 删除指定文档的所有向量，返回删除数量"""
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Filter, FieldCondition, MatchValue
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
 
     client = AsyncQdrantClient(
         host=settings.qdrant_host,
@@ -241,7 +256,7 @@ async def delete_doc_vectors(doc_hash: str) -> int:
         check_compatibility=False,
     )
 
-    result = await client.delete(
+    await client.delete(
         collection_name=settings.qdrant_collection,
         points_selector=Filter(
             must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
@@ -255,6 +270,7 @@ async def delete_doc_vectors(doc_hash: str) -> int:
 
 
 # ── 集合统计 ──────────────────────────────────────────────────────────
+
 
 async def get_collection_stats() -> dict:
     """获取 Qdrant collection 统计信息"""
@@ -270,8 +286,8 @@ async def get_collection_stats() -> dict:
         await client.close()
         return {
             "vectors_count": info.vectors_count,
-            "points_count":  info.points_count,
-            "status":        info.status,
+            "points_count": info.points_count,
+            "status": info.status,
         }
     except Exception:
         return {"vectors_count": 0, "points_count": 0, "status": "unavailable"}

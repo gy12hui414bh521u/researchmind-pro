@@ -3,16 +3,15 @@ Eval 测试套件 — Golden Dataset
 SDD §13.2：100 条标准问答对，验证 Hit Rate@5 ≥ 85%、Faithfulness ≥ 0.85
 运行方式：pytest tests/eval/ -m eval --tb=short
 """
+
 from __future__ import annotations
 
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ── Golden Dataset（精简版 20 条，CI 用）────────────────────────────
 
@@ -92,15 +91,16 @@ GOLDEN_DATASET = [
 
 # ── 数据类 ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class EvalResult:
     query_id: str
     query: str
-    retrieved: bool          # 是否检索到相关内容
-    keyword_hit_count: int   # 命中关键词数
-    keyword_total: int       # 总关键词数
-    latency_ms: float        # 检索延迟
-    error: Optional[str] = None
+    retrieved: bool  # 是否检索到相关内容
+    keyword_hit_count: int  # 命中关键词数
+    keyword_total: int  # 总关键词数
+    latency_ms: float  # 检索延迟
+    error: str | None = None
 
     @property
     def keyword_hit_rate(self) -> float:
@@ -139,6 +139,7 @@ class EvalSummary:
 
 # ── Eval Runner ───────────────────────────────────────────────────────
 
+
 async def run_eval_on_dataset(
     dataset: list[dict],
     mock_retriever=None,
@@ -151,13 +152,16 @@ async def run_eval_on_dataset(
         try:
             if mock_retriever:
                 # 使用 mock：注入 relevant_content 作为结果
-                chunks = [MagicMock(
-                    content=item["relevant_content"],
-                    score=0.92,
-                    doc_id="golden-doc",
-                )]
+                chunks = [
+                    MagicMock(
+                        content=item["relevant_content"],
+                        score=0.92,
+                        doc_id="golden-doc",
+                    )
+                ]
             else:
                 from app.rag.retriever import retrieve
+
                 result = await retrieve(query=item["query"], top_k=5)
                 chunks = result.chunks
 
@@ -167,26 +171,30 @@ async def run_eval_on_dataset(
             all_content = " ".join(c.content for c in chunks)
             hit_count = sum(1 for kw in item["expected_keywords"] if kw in all_content)
 
-            summary.results.append(EvalResult(
-                query_id=       item["id"],
-                query=          item["query"],
-                retrieved=      len(chunks) > 0,
-                keyword_hit_count=hit_count,
-                keyword_total=  len(item["expected_keywords"]),
-                latency_ms=     latency_ms,
-            ))
+            summary.results.append(
+                EvalResult(
+                    query_id=item["id"],
+                    query=item["query"],
+                    retrieved=len(chunks) > 0,
+                    keyword_hit_count=hit_count,
+                    keyword_total=len(item["expected_keywords"]),
+                    latency_ms=latency_ms,
+                )
+            )
 
         except Exception as e:
             latency_ms = (time.perf_counter() - start) * 1000
-            summary.results.append(EvalResult(
-                query_id=        item["id"],
-                query=           item["query"],
-                retrieved=       False,
-                keyword_hit_count=0,
-                keyword_total=   len(item["expected_keywords"]),
-                latency_ms=      latency_ms,
-                error=           str(e),
-            ))
+            summary.results.append(
+                EvalResult(
+                    query_id=item["id"],
+                    query=item["query"],
+                    retrieved=False,
+                    keyword_hit_count=0,
+                    keyword_total=len(item["expected_keywords"]),
+                    latency_ms=latency_ms,
+                    error=str(e),
+                )
+            )
 
     return summary
 
@@ -194,6 +202,7 @@ async def run_eval_on_dataset(
 # ═══════════════════════════════════════════════════════════════════════
 # Eval 测试用例
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.eval
 class TestRAGEval:
@@ -216,9 +225,7 @@ class TestRAGEval:
         print(f"[Eval] Avg Latency: {summary.avg_latency_ms:.1f}ms")
         print(f"[Eval] Error Rate: {summary.error_rate:.2%}")
 
-        assert summary.hit_rate >= 0.85, (
-            f"Hit Rate {summary.hit_rate:.2%} 低于目标 85%"
-        )
+        assert summary.hit_rate >= 0.85, f"Hit Rate {summary.hit_rate:.2%} 低于目标 85%"
 
     @pytest.mark.asyncio
     async def test_keyword_hit_rate(self):
@@ -232,9 +239,7 @@ class TestRAGEval:
     async def test_error_rate_below_threshold(self):
         """错误率 < 1%"""
         summary = await run_eval_on_dataset(GOLDEN_DATASET, mock_retriever=True)
-        assert summary.error_rate < 0.01, (
-            f"错误率 {summary.error_rate:.2%} 超过阈值 1%"
-        )
+        assert summary.error_rate < 0.01, f"错误率 {summary.error_rate:.2%} 超过阈值 1%"
 
     @pytest.mark.asyncio
     async def test_per_category_hit_rate(self):
@@ -242,7 +247,7 @@ class TestRAGEval:
         summary = await run_eval_on_dataset(GOLDEN_DATASET, mock_retriever=True)
 
         by_category: dict[str, list[EvalResult]] = {}
-        for item, result in zip(GOLDEN_DATASET, summary.results):
+        for item, result in zip(GOLDEN_DATASET, summary.results, strict=False):
             cat = item["category"]
             by_category.setdefault(cat, []).append(result)
 
@@ -268,6 +273,7 @@ class TestRAGEval:
 
 # ── 输出评估报告 ──────────────────────────────────────────────────────
 
+
 @pytest.mark.eval
 class TestEvalReport:
     """生成可供 CI 读取的结构化评估报告"""
@@ -278,21 +284,21 @@ class TestEvalReport:
         summary = await run_eval_on_dataset(GOLDEN_DATASET, mock_retriever=True)
 
         report = {
-            "total_queries":      len(summary.results),
-            "hit_rate":           round(summary.hit_rate, 4),
-            "keyword_hit_rate":   round(summary.avg_keyword_hit_rate, 4),
-            "avg_latency_ms":     round(summary.avg_latency_ms, 2),
-            "error_rate":         round(summary.error_rate, 4),
-            "target_hit_rate":    0.85,
-            "pass":               summary.hit_rate >= 0.85,
+            "total_queries": len(summary.results),
+            "hit_rate": round(summary.hit_rate, 4),
+            "keyword_hit_rate": round(summary.avg_keyword_hit_rate, 4),
+            "avg_latency_ms": round(summary.avg_latency_ms, 2),
+            "error_rate": round(summary.error_rate, 4),
+            "target_hit_rate": 0.85,
+            "pass": summary.hit_rate >= 0.85,
             "details": [
                 {
-                    "id":             r.query_id,
-                    "query":          r.query[:50],
-                    "retrieved":      r.retrieved,
+                    "id": r.query_id,
+                    "query": r.query[:50],
+                    "retrieved": r.retrieved,
                     "keyword_hit_rate": round(r.keyword_hit_rate, 2),
-                    "latency_ms":     round(r.latency_ms, 1),
-                    "error":          r.error,
+                    "latency_ms": round(r.latency_ms, 1),
+                    "error": r.error,
                 }
                 for r in summary.results
             ],

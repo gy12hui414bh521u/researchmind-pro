@@ -14,27 +14,27 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from app.config import settings
 from app.rag.embeddings import get_embedding_client
 
-
 # ── 数据类 ────────────────────────────────────────────────────────────
+
 
 @dataclass
 class DocumentChunk:
     """单个文档分块"""
-    text:        str
+
+    text: str
     chunk_index: int
-    doc_id:      str
-    doc_hash:    str
-    title:       str       = ""
-    source_url:  str       = ""
-    source_type: str       = "text"
-    section:     str       = ""
-    language:    str       = "zh"
-    metadata:    dict      = field(default_factory=dict)
+    doc_id: str
+    doc_hash: str
+    title: str = ""
+    source_url: str = ""
+    source_type: str = "text"
+    section: str = ""
+    language: str = "zh"
+    metadata: dict = field(default_factory=dict)
 
     @property
     def chunk_id(self) -> str:
@@ -44,21 +44,23 @@ class DocumentChunk:
 @dataclass
 class IngestionResult:
     """摄取结果"""
-    doc_id:      str
-    doc_hash:    str
+
+    doc_id: str
+    doc_hash: str
     chunk_count: int
-    success:     bool
-    error:       str  = ""
-    elapsed_s:   float = 0.0
+    success: bool
+    error: str = ""
+    elapsed_s: float = 0.0
 
 
 # ── 文本清洗 ──────────────────────────────────────────────────────────
+
 
 def clean_text(text: str) -> str:
     """清洗文本：去除噪声，统一格式"""
     # 替换多余空白
     text = re.sub(r"\r\n", "\n", text)
-    text = re.sub(r"\r",   "\n", text)
+    text = re.sub(r"\r", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
@@ -81,6 +83,7 @@ def detect_language(text: str) -> str:
 
 
 # ── 文本分块 ──────────────────────────────────────────────────────────
+
 
 def split_by_tokens_approx(
     text: str,
@@ -150,7 +153,7 @@ def split_markdown(text: str, chunk_size: int = 512) -> list[tuple[str, str]]:
         if header_match:
             if current_content:
                 sections.append((current_title, "\n".join(current_content).strip()))
-            current_title   = header_match.group(2).strip()
+            current_title = header_match.group(2).strip()
             current_content = []
         else:
             current_content.append(line)
@@ -173,6 +176,7 @@ def split_markdown(text: str, chunk_size: int = 512) -> list[tuple[str, str]]:
 
 # ── PDF 解析 ──────────────────────────────────────────────────────────
 
+
 async def parse_pdf(pdf_bytes: bytes) -> str:
     """
     解析 PDF 为纯文本。
@@ -193,6 +197,7 @@ async def _parse_pdf_pymupdf(pdf_bytes: bytes) -> str:
     """使用 pymupdf 解析 PDF（本地，免费）"""
     try:
         import fitz  # pymupdf
+
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         pages = []
         for page in doc:
@@ -201,15 +206,15 @@ async def _parse_pdf_pymupdf(pdf_bytes: bytes) -> str:
         return "\n\n".join(pages)
     except ImportError:
         raise RuntimeError(
-            "pymupdf 未安装，请运行：uv add pymupdf\n"
-            "或配置 LLAMA_CLOUD_API_KEY 使用 LlamaParse"
+            "pymupdf 未安装，请运行：uv add pymupdf\n或配置 LLAMA_CLOUD_API_KEY 使用 LlamaParse"
         )
 
 
 async def _parse_pdf_llama(pdf_bytes: bytes) -> str:
     """使用 LlamaParse 解析 PDF（云端，高质量）"""
-    import httpx
     import asyncio
+
+    import httpx
 
     headers = {"Authorization": f"Bearer {settings.llama_cloud_api_key}"}
 
@@ -247,13 +252,15 @@ async def _parse_pdf_llama(pdf_bytes: bytes) -> str:
 
 # ── 网页抓取 ──────────────────────────────────────────────────────────
 
+
 async def fetch_url(url: str) -> tuple[str, str]:
     """
     抓取网页内容，返回 (title, text)。
     使用 httpx + 简单 HTML 清洗（不依赖 playwright）。
     """
-    import httpx
     import html
+
+    import httpx
 
     headers = {
         "User-Agent": (
@@ -274,9 +281,9 @@ async def fetch_url(url: str) -> tuple[str, str]:
 
     # 移除不需要的标签
     text = re.sub(r"<script[^>]*>.*?</script>", "", raw_html, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<style[^>]*>.*?</style>",  "", text,     flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<nav[^>]*>.*?</nav>",       "", text,     flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<footer[^>]*>.*?</footer>", "", text,     flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<nav[^>]*>.*?</nav>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<footer[^>]*>.*?</footer>", "", text, flags=re.DOTALL | re.IGNORECASE)
 
     # 去除所有 HTML 标签
     text = re.sub(r"<[^>]+>", " ", text)
@@ -288,26 +295,28 @@ async def fetch_url(url: str) -> tuple[str, str]:
 
 # ── 主摄取函数 ────────────────────────────────────────────────────────
 
+
 async def ingest_text(
-    text:        str,
-    doc_id:      str,
-    title:       str       = "",
-    source_url:  str       = "",
-    source_type: str       = "text",
-    metadata:    dict      = {},
+    text: str,
+    doc_id: str,
+    title: str = "",
+    source_url: str = "",
+    source_type: str = "text",
+    metadata: dict = None,
 ) -> IngestionResult:
     """
     摄取纯文本到 Qdrant。
     这是核心函数，PDF/URL 解析后都调用这里。
     """
+    if metadata is None:
+        metadata = {}
     start = time.time()
 
     # 1. 清洗
     text = clean_text(text)
     if not text:
         return IngestionResult(
-            doc_id=doc_id, doc_hash="", chunk_count=0,
-            success=False, error="清洗后文本为空"
+            doc_id=doc_id, doc_hash="", chunk_count=0, success=False, error="清洗后文本为空"
         )
 
     # 2. 计算 hash（用于幂等）
@@ -321,15 +330,12 @@ async def ingest_text(
     if is_markdown:
         chunks_with_section = split_markdown(text, settings.chunk_size)
     else:
-        raw_chunks = split_by_tokens_approx(
-            text, settings.chunk_size, settings.chunk_overlap
-        )
+        raw_chunks = split_by_tokens_approx(text, settings.chunk_size, settings.chunk_overlap)
         chunks_with_section = [("", c) for c in raw_chunks]
 
     if not chunks_with_section:
         return IngestionResult(
-            doc_id=doc_id, doc_hash=doc_hash, chunk_count=0,
-            success=False, error="分块结果为空"
+            doc_id=doc_id, doc_hash=doc_hash, chunk_count=0, success=False, error="分块结果为空"
         )
 
     # 4. 构建 DocumentChunk 列表
@@ -357,8 +363,11 @@ async def ingest_text(
         vectors = await emb_client.embed_texts(texts_to_embed)
     except Exception as e:
         return IngestionResult(
-            doc_id=doc_id, doc_hash=doc_hash, chunk_count=0,
-            success=False, error=f"Embedding 失败: {e}"
+            doc_id=doc_id,
+            doc_hash=doc_hash,
+            chunk_count=0,
+            success=False,
+            error=f"Embedding 失败: {e}",
         )
 
     # 6. 存入 Qdrant
@@ -366,8 +375,11 @@ async def ingest_text(
         await _upsert_to_qdrant(doc_chunks, vectors)
     except Exception as e:
         return IngestionResult(
-            doc_id=doc_id, doc_hash=doc_hash, chunk_count=0,
-            success=False, error=f"Qdrant 写入失败: {e}"
+            doc_id=doc_id,
+            doc_hash=doc_hash,
+            chunk_count=0,
+            success=False,
+            error=f"Qdrant 写入失败: {e}",
         )
 
     elapsed = time.time() - start
@@ -382,38 +394,39 @@ async def ingest_text(
 
 async def ingest_pdf(
     pdf_bytes: bytes,
-    doc_id:    str,
-    title:     str = "",
-    metadata:  dict = {},
+    doc_id: str,
+    title: str = "",
+    metadata: dict = None,
 ) -> IngestionResult:
     """摄取 PDF 文件"""
+    if metadata is None:
+        metadata = {}
     try:
         text = await parse_pdf(pdf_bytes)
     except Exception as e:
         return IngestionResult(
-            doc_id=doc_id, doc_hash="", chunk_count=0,
-            success=False, error=f"PDF 解析失败: {e}"
+            doc_id=doc_id, doc_hash="", chunk_count=0, success=False, error=f"PDF 解析失败: {e}"
         )
-    return await ingest_text(
-        text, doc_id, title=title, source_type="pdf", metadata=metadata
-    )
+    return await ingest_text(text, doc_id, title=title, source_type="pdf", metadata=metadata)
 
 
 async def ingest_url(
-    url:     str,
-    doc_id:  str,
-    metadata: dict = {},
+    url: str,
+    doc_id: str,
+    metadata: dict = None,
 ) -> IngestionResult:
     """摄取网页 URL"""
+    if metadata is None:
+        metadata = {}
     try:
         title, text = await fetch_url(url)
     except Exception as e:
         return IngestionResult(
-            doc_id=doc_id, doc_hash="", chunk_count=0,
-            success=False, error=f"网页抓取失败: {e}"
+            doc_id=doc_id, doc_hash="", chunk_count=0, success=False, error=f"网页抓取失败: {e}"
         )
     return await ingest_text(
-        text, doc_id,
+        text,
+        doc_id,
         title=title,
         source_url=url,
         source_type="url",
@@ -423,13 +436,14 @@ async def ingest_url(
 
 # ── Qdrant 写入 ───────────────────────────────────────────────────────
 
+
 async def _upsert_to_qdrant(
-    chunks:  list[DocumentChunk],
+    chunks: list[DocumentChunk],
     vectors: list[list[float]],
 ) -> None:
     """将 chunk + vector 批量写入 Qdrant"""
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import PointStruct, VectorParams, Distance
+    from qdrant_client.models import Distance, PointStruct, VectorParams
 
     client = AsyncQdrantClient(
         host=settings.qdrant_host,
@@ -452,23 +466,23 @@ async def _upsert_to_qdrant(
     # 构建 PointStruct 列表
     points = [
         PointStruct(
-            id=abs(hash(chunk.chunk_id)) % (2**63),   # Qdrant 需要 uint64
+            id=abs(hash(chunk.chunk_id)) % (2**63),  # Qdrant 需要 uint64
             vector=vector,
             payload={
-                "chunk_id":    chunk.chunk_id,
-                "doc_id":      chunk.doc_id,
-                "doc_hash":    chunk.doc_hash,
+                "chunk_id": chunk.chunk_id,
+                "doc_id": chunk.doc_id,
+                "doc_hash": chunk.doc_hash,
                 "chunk_index": chunk.chunk_index,
-                "text":        chunk.text,
-                "title":       chunk.title,
-                "source_url":  chunk.source_url,
+                "text": chunk.text,
+                "title": chunk.title,
+                "source_url": chunk.source_url,
                 "source_type": chunk.source_type,
-                "section":     chunk.section,
-                "language":    chunk.language,
+                "section": chunk.section,
+                "language": chunk.language,
                 **chunk.metadata,
             },
         )
-        for chunk, vector in zip(chunks, vectors)
+        for chunk, vector in zip(chunks, vectors, strict=False)
     ]
 
     # 分批写入（每批 100 条）

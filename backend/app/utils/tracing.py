@@ -19,10 +19,10 @@ def setup_langsmith() -> bool:
     if not settings.langchain_tracing_v2 or not settings.langchain_api_key:
         return False
 
-    os.environ["LANGCHAIN_TRACING_V2"]  = "true"
-    os.environ["LANGCHAIN_API_KEY"]     = settings.langchain_api_key
-    os.environ["LANGCHAIN_PROJECT"]     = settings.langchain_project
-    os.environ["LANGCHAIN_ENDPOINT"]    = settings.langchain_endpoint
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langchain_endpoint
 
     return True
 
@@ -30,5 +30,6 @@ def setup_langsmith() -> bool:
 def get_run_url(run_id: str) -> str:
     """生成 LangSmith Run URL（用于日志输出）"""
     from app.config import settings
+
     project = settings.langchain_project
     return f"https://smith.langchain.com/projects/{project}/runs/{run_id}"

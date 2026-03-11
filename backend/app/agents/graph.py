@@ -34,8 +34,8 @@ from app.agents.nodes import (
 from app.config import settings
 from app.models.agent import ResearchState
 
-
 # ── 路由函数 ──────────────────────────────────────────────────────────
+
 
 def route_after_planner(
     state: ResearchState,
@@ -71,9 +71,9 @@ def route_after_critic(
     - 评分未达标 且 未超过最大迭代次数 → writer（重写）
     - 评分达标 或 超过最大迭代次数    → finalize
     """
-    score     = state.get("quality_score") or 0.0
+    score = state.get("quality_score") or 0.0
     iteration = state.get("iteration_count", 0)
-    max_iter  = settings.max_critic_iterations
+    max_iter = settings.max_critic_iterations
 
     if score < settings.min_quality_score and iteration < max_iter:
         return "writer"
@@ -81,6 +81,7 @@ def route_after_critic(
 
 
 # ── 构建 Graph ────────────────────────────────────────────────────────
+
 
 def build_graph(checkpointer=None) -> StateGraph:
     """
@@ -93,12 +94,12 @@ def build_graph(checkpointer=None) -> StateGraph:
     graph = StateGraph(ResearchState)
 
     # ── 添加节点 ──────────────────────────────────────────────────────
-    graph.add_node("planner",  planner_node)
-    graph.add_node("hitl",     hitl_node)
+    graph.add_node("planner", planner_node)
+    graph.add_node("hitl", hitl_node)
     graph.add_node("research", research_node)
-    graph.add_node("analyst",  analyst_node)
-    graph.add_node("writer",   writer_node)
-    graph.add_node("critic",   critic_node)
+    graph.add_node("analyst", analyst_node)
+    graph.add_node("writer", writer_node)
+    graph.add_node("critic", critic_node)
     graph.add_node("finalize", finalize_node)
 
     # ── 添加边 ────────────────────────────────────────────────────────
@@ -120,8 +121,8 @@ def build_graph(checkpointer=None) -> StateGraph:
 
     # 线性流程
     graph.add_edge("research", "analyst")
-    graph.add_edge("analyst",  "writer")
-    graph.add_edge("writer",   "critic")
+    graph.add_edge("analyst", "writer")
+    graph.add_edge("writer", "critic")
 
     # Critic → 条件路由（重写 or 完成）
     graph.add_conditional_edges(
@@ -136,11 +137,12 @@ def build_graph(checkpointer=None) -> StateGraph:
     cp = checkpointer or MemorySaver()
     return graph.compile(
         checkpointer=cp,
-        interrupt_before=["hitl"],   # hitl 节点前自动暂停，等待外部 resume
+        interrupt_before=["hitl"],  # hitl 节点前自动暂停，等待外部 resume
     )
 
 
 # ── Checkpointer 工厂 ─────────────────────────────────────────────────
+
 
 async def create_checkpointer():
     """
@@ -151,10 +153,9 @@ async def create_checkpointer():
     if settings.checkpointer_backend == "postgres":
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            saver = AsyncPostgresSaver.from_conn_string(
-                settings.postgres_url_sync
-            )
-            await saver.setup()   # 自动创建 checkpoints 表
+
+            saver = AsyncPostgresSaver.from_conn_string(settings.postgres_url_sync)
+            await saver.setup()  # 自动创建 checkpoints 表
             return saver
         except Exception as e:
             print(f"⚠️  PostgreSQL Checkpointer 初始化失败，降级到 MemorySaver: {e}")
@@ -179,7 +180,7 @@ def get_graph():
 async def init_graph():
     """应用启动时调用，初始化带 Checkpointer 的 Graph"""
     global _graph_instance
-    checkpointer   = await create_checkpointer()
+    checkpointer = await create_checkpointer()
     _graph_instance = build_graph(checkpointer)
     print(f"✅ LangGraph 初始化完成（checkpointer: {settings.checkpointer_backend}）")
     return _graph_instance
