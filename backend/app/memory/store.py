@@ -74,7 +74,7 @@ class MemoryStore:
         task_id: str,
         query: str,
         summary: str,
-        keywords: list[str] = None,
+        keywords: list[str] | None = None,
     ) -> None:
         """保存任务完成摘要（供后续任务参考，避免重复研究）"""
         if keywords is None:
