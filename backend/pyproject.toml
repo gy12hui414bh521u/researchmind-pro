@@ -92,15 +92,12 @@ known-first-party = ["app"]
 
 # ── MyPy ──────────────────────────────────────────
 [tool.mypy]
-# 替换 backend/pyproject.toml 里的 [tool.mypy] 段落
-[tool.mypy]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
-no_implicit_optional = false      # 允许 def f(x: dict = None) 写法
+no_implicit_optional = false
 exclude = ["tests/"]
 
-# 第三方库类型不完整，逐模块忽略
 [[tool.mypy.overrides]]
 module = [
     "langgraph.*",
