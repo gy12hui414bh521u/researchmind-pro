@@ -1,0 +1,97 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════════════
+# ResearchMind Pro — 本地开发 Docker Compose
+# 启动：docker compose up -d
+# 停止：docker compose down
+# 重置数据：docker compose down -v
+# ══════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Qdrant 向量数据库 ──────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    container_name: researchmind_qdrant
+    ports:
+      - "6333:6333"   # HTTP REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      # 本地开发不启用认证，生产环境需设置 API Key
+      # QDRANT__SERVICE__API_KEY: "your-secret-key"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - researchmind_net
+
+  # ── PostgreSQL 关系数据库 ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: researchmind_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: researchmind
+      POSTGRES_PASSWORD: researchmind_dev
+      POSTGRES_DB: researchmind
+      # 性能调优（开发环境适中配置）
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/app/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U researchmind -d researchmind"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - researchmind_net
+
+  # ── Redis 缓存与任务队列 ───────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: researchmind_redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - researchmind_net
+
+# ── 数据卷 ────────────────────────────────────────────────────────────
+volumes:
+  qdrant_storage:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ── 网络 ──────────────────────────────────────────────────────────────
+networks:
+  researchmind_net:
+    driver: bridge

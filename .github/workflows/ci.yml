@@ -1,0 +1,329 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION:   "20"
+  REGISTRY:       ghcr.io
+  IMAGE_NAME:     ${{ github.repository }}
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 1 — Lint & Type Check
+# ══════════════════════════════════════════════════════════════════════
+jobs:
+  lint-and-type-check:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        working-directory: backend
+        run: uv run ruff check app/ tests/
+
+      - name: Ruff format check
+        working-directory: backend
+        run: uv run ruff format --check app/ tests/
+
+      - name: mypy type check
+        working-directory: backend
+        run: uv run mypy app/ --ignore-missing-imports
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 2 — Unit Tests
+# ══════════════════════════════════════════════════════════════════════
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Run backend unit tests
+        working-directory: backend
+        env:
+          AUTH_DISABLED:    "true"
+          DATABASE_URL:     "sqlite+aiosqlite:///./test.db"
+          ENVIRONMENT:      "local"
+          DEEPSEEK_API_KEY: "sk-test"
+          QWEN_API_KEY:     "sk-test"
+        run: |
+          uv run pytest tests/unit/ \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: backend/coverage.xml
+          flags: backend-unit
+          fail_ci_if_error: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test:unit -- --reporter=verbose
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 3 — Integration Tests（仅 PR → main）
+# ══════════════════════════════════════════════════════════════════════
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Start test infrastructure
+        run: docker compose -f docker-compose.test.yml up -d
+
+      - name: Wait for postgres
+        run: |
+          until docker exec researchmind_test_postgres pg_isready -U testuser -d researchmind_test; do
+            echo "Waiting for postgres..."; sleep 3
+          done
+
+      - name: Wait for qdrant
+        run: |
+          until curl -sf http://localhost:6333/healthz; do
+            echo "Waiting for qdrant..."; sleep 3
+          done
+
+      - name: Wait for redis
+        run: |
+          until docker exec researchmind_test_redis redis-cli ping | grep -q PONG; do
+            echo "Waiting for redis..."; sleep 3
+          done
+
+      - name: Run integration tests
+        working-directory: backend
+        env:
+          AUTH_DISABLED:        "true"
+          ENVIRONMENT:          "local"
+          POSTGRES_HOST:        "localhost"
+          POSTGRES_PORT:        "5432"
+          POSTGRES_USER:        "testuser"
+          POSTGRES_PASSWORD:    "testpassword"
+          POSTGRES_DB:          "researchmind_test"
+          DATABASE_URL:         "postgresql+asyncpg://testuser:testpassword@localhost:5432/researchmind_test"
+          REDIS_HOST:           "localhost"
+          REDIS_PORT:           "6379"
+          REDIS_PASSWORD:       ""
+          QDRANT_HOST:          "localhost"
+          QDRANT_PORT:          "6333"
+          CHECKPOINTER_BACKEND: "memory"
+          DEEPSEEK_API_KEY:     "sk-test"
+          QWEN_API_KEY:         "sk-test"
+        run: uv run pytest tests/integration/ -v --tb=short -x
+
+      - name: Tear down infrastructure
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 4 — Eval Regression（仅 PR → main）
+# ══════════════════════════════════════════════════════════════════════
+  eval-regression:
+    name: Eval Regression
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Run eval (Golden Dataset)
+        working-directory: backend
+        env:
+          AUTH_DISABLED:    "true"
+          DATABASE_URL:     "sqlite+aiosqlite:///./test.db"
+          ENVIRONMENT:      "local"
+          DEEPSEEK_API_KEY: "sk-test"
+          QWEN_API_KEY:     "sk-test"
+        run: uv run pytest tests/eval/ -m eval -v --tb=short
+
+      - name: Upload eval report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: backend/eval_report.json
+          if-no-files-found: ignore
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 5 — Build & Push（push to main/dev）
+# ══════════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./backend
+          file:       ./backend/Dockerfile
+          target:     runtime
+          push:       true
+          tags:       ${{ steps.meta-backend.outputs.tags }}
+          labels:     ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./frontend
+          file:       ./frontend/Dockerfile
+          target:     runtime
+          push:       true
+          tags:       ${{ steps.meta-frontend.outputs.tags }}
+          labels:     ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+# ══════════════════════════════════════════════════════════════════════
+# Job 6 — Deploy（tag v*.*.* → 生产）
+# ══════════════════════════════════════════════════════════════════════
+  deploy:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, integration-tests, eval-regression]
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rolling deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/researchmind-pro
+            docker compose pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --no-deps --remove-orphans
+            sleep 20
+            curl -sf http://localhost:8000/api/v1/health \
+              || (echo "Health check failed!"; exit 1)
+            echo "✅ Deployed: ${{ github.ref_name }}"

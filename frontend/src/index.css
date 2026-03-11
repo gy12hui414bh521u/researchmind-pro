@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #0d0f14;
+    color: #e8eaf0;
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #252a38;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4055;
+  }
+}
+
+@layer components {
+  /* 卡片基础样式 */
+  .card {
+    @apply bg-bg-surface border border-bg-border rounded-xl;
+  }
+
+  .card-elevated {
+    @apply bg-bg-elevated border border-bg-border rounded-xl shadow-panel;
+  }
+
+  /* 按钮基础 */
+  .btn-primary {
+    @apply bg-accent-cyan text-bg-base font-medium px-4 py-2 rounded-lg
+           hover:bg-accent-cyan-dim transition-colors duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply text-text-secondary hover:text-text-primary hover:bg-bg-elevated
+           px-3 py-2 rounded-lg transition-colors duration-150;
+  }
+
+  .btn-danger {
+    @apply bg-accent-rose/10 text-accent-rose border border-accent-rose/20
+           hover:bg-accent-rose/20 px-3 py-2 rounded-lg transition-colors duration-150;
+  }
+
+  /* 状态徽章 */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* 输入框 */
+  .input {
+    @apply bg-bg-elevated border border-bg-border rounded-lg px-3 py-2
+           text-text-primary placeholder:text-text-muted
+           focus:outline-none focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20
+           transition-colors duration-150 w-full;
+  }
+
+  /* 加载骨架 */
+  .skeleton {
+    @apply bg-bg-elevated rounded animate-pulse;
+    background: linear-gradient(
+      90deg,
+      #1a1e2a 25%,
+      #252a38 50%,
+      #1a1e2a 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* 侧边栏导航项 */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary
+           hover:text-text-primary hover:bg-bg-elevated
+           transition-all duration-150 cursor-pointer;
+  }
+
+  .nav-item.active {
+    @apply text-accent-cyan bg-accent-cyan/10;
+  }
+}
+
+@layer utilities {
+  /* 渐变文字 */
+  .text-gradient-cyan {
+    @apply bg-gradient-to-r from-accent-cyan to-accent-violet bg-clip-text text-transparent;
+  }
+
+  /* 发光边框 */
+  .border-glow-cyan {
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.3), 0 0 20px rgba(0, 212, 255, 0.1);
+  }
+
+  /* SSE 流式内容打字效果占位 */
+  .streaming::after {
+    content: '▊';
+    animation: blink 0.7s step-end infinite;
+    color: #00d4ff;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+}

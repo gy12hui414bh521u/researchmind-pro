@@ -1,0 +1,21 @@
+{
+  "_comment": "将此配置合并到 Claude Desktop 的 claude_desktop_config.json 中",
+  "_config_path_windows": "%APPDATA%\\Claude\\claude_desktop_config.json",
+  "_config_path_mac":     "~/Library/Application Support/Claude/claude_desktop_config.json",
+
+  "mcpServers": {
+    "researchmind": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "E:\\Agent WorkSpace\\researchmind-pro\\backend",
+        "run",
+        "python",
+        "app/mcp_server/server.py"
+      ],
+      "env": {
+        "RESEARCHMIND_API_URL": "http://localhost:8000"
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.local
+.env.production
+
+# Python build
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
+*.egg-info/
+
+# Frontend build
+node_modules/
+dist/
+.pnpm-store/
+
+# Docker
+*.tar
+
+# IDE
+.vscode/
+.idea/
+
+# Eval artifacts
+eval_report.json

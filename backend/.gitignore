@@ -1,0 +1,105 @@
+# ═══════════════════════════════════════════════════
+# ResearchMind Pro — .gitignore
+# ═══════════════════════════════════════════════════
+
+# ── 环境变量（绝不提交）──────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── Python ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── uv / venv ─────────────────────────────────────
+.venv/
+venv/
+env/
+.uv/
+uv.lock            # 取消注释若不想追踪锁文件（通常应该追踪）
+
+# ── 测试 & 覆盖率 ─────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ── MyPy ─────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ── Ruff ─────────────────────────────────────────
+.ruff_cache/
+
+# ── Node / Frontend ───────────────────────────────
+node_modules/
+.pnpm-store/
+frontend/dist/
+frontend/.vite/
+frontend/build/
+*.local
+
+# ── IDE ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Docker ────────────────────────────────────────
+# （docker-compose.yml 应该提交，volumes 数据不提交）
+docker/volumes/
+
+# ── 数据库 & 向量库本地数据 ──────────────────────────
+data/
+qdrant_storage/
+postgres_data/
+redis_data/
+
+# ── 上传的文档（临时）────────────────────────────────
+uploads/
+tmp/
+temp/
+
+# ── 日志 ──────────────────────────────────────────
+*.log
+logs/
+
+# ── 测试数据（敏感） ───────────────────────────────
+tests/data/private/
+
+# ── CI/CD ─────────────────────────────────────────
+.github/secrets/
+
+# ── 其他 ──────────────────────────────────────────
+*.bak
+*.tmp
+.cache/
