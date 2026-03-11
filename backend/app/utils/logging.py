@@ -5,16 +5,15 @@
 """
 
 from __future__ import annotations
-
 import logging
-
+from typing import Any
 import structlog
-
+from structlog.types import Processor
 from app.config import settings
 
 
 def setup_logging() -> None:
-    shared_processors = [
+    shared_processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -41,8 +40,7 @@ def setup_logging() -> None:
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
-    logging.basicConfig(
-        format="%(message)s", level=getattr(logging, settings.log_level.value, logging.INFO)
-    )
+    logging.basicConfig(format="%(message)s",
+                        level=getattr(logging, settings.log_level.value, logging.INFO))
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
